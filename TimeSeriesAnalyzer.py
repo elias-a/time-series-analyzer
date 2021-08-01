@@ -7,35 +7,41 @@ from keras.layers import Dense, LSTM
 
 class TimeSeriesAnalyzer:
 
-    def __init__(self, trainFilePath, testFilePath, columns, window):
+    def __init__(self, window, trainData=None, testData=None):
         self.window = window
-        self.trainData = pd.read_csv(trainFilePath)[columns].values
-        self.testData = pd.read_csv(testFilePath)[columns].values
+        self.trainData = trainData
+        self.testData = testData
         self.scaler = MinMaxScaler(feature_range=(0, 1))
+
+    def readDataFromFiles(self, trainFilePath, testFilePath, columns):
+        self.trainData = pd.read_csv(trainFilePath)[columns]
+        self.testData = pd.read_csv(testFilePath)[columns]
 
     def transform(self):
         
+        self.trainData = self.trainData.values
+        self.testData = self.testData.values
+
         # Normalize the training data. 
         self.trainData = self.scaler.fit_transform(self.trainData)
 
         # Transform the data into input and output variables. 
         self.xTrain, self.yTrain = self.transformTimeSeries(self.trainData)
 
-    def trainLstm(self):
+    def trainLstm(self, units, batchSize, epochs):
         
         # Fit the training data using a LSTM network. 
         self.model = Sequential()
-        self.model.add(LSTM(4, input_shape=(self.window, self.trainData.shape[1])))
+        self.model.add(LSTM(units, input_shape=(self.window, self.trainData.shape[1])))
         self.model.add(Dense(1))
         self.model.compile(loss='mean_squared_error', optimizer='adam')
-
-        batchSize = 20
-        epochs = 100
         self.model.fit(self.xTrain, self.yTrain, epochs=epochs, batch_size=batchSize)
 
-        #for epoch in range(epochs):
-        #    self.model.fit(self.xTrain, self.yTrain, epochs=1, batch_size=batchSize, shuffle=False)
-        #    self.model.reset_states()
+        """
+        for _ in range(epochs):
+            self.model.fit(self.xTrain, self.yTrain, epochs=1, batch_size=batchSize, shuffle=False)
+            self.model.reset_states()
+        """
 
     def transformTest(self):
 
@@ -70,9 +76,19 @@ class TimeSeriesAnalyzer:
     def transformTimeSeries(self, data):
         dataX, dataY = [], []
         for i in range(len(data) - self.window):
+            # The inputs at step i consist of the 
+            # data from the next `self.window` time steps. 
             a = data[i:(i + self.window), :]
             dataX.append(a)
+
+            # The output at step i is the value in the time
+            # series that is `self.window` steps in the future. 
             dataY.append(data[i + self.window, data.shape[1] - 1])
+        
+        # Return the (N - window) x window x M array of inputs
+        # and the (N - window) x 1 array of outputs, where N
+        # is the number of rows and M is the number of columns
+        # in the original dataset. 
         return np.array(dataX), np.array(dataY)
 
     # For each time step in the testing data, determine whether the 
